@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using HotelBooking.Core;
 using HotelBooking.UnitTests.Fakes;
 using Xunit;
 using System.Linq;
 using System.Threading.Tasks;
+using Moq;
 
 
 namespace HotelBooking.UnitTests
@@ -65,6 +67,138 @@ namespace HotelBooking.UnitTests
             
             // Assert
             Assert.Empty(bookingForReturnedRoomId);
+        }
+        
+        // MOCKING FRAMEWORK TEST
+        [Fact]
+        public async Task CreateBooking_RoomAvailable_CreatesActiveBooking()
+        {
+            // Arrange
+
+            var bookingRepository = new Mock<IRepository<Booking>>();
+            var roomRepository = new Mock<IRepository<Room>>();
+
+            // Mock the booking repository
+            // No existing bookings
+            bookingRepository
+                .Setup(x => x.GetAllAsync())
+                .ReturnsAsync(new List<Booking>());
+
+            // Mock the room repository
+            // Pretend that there are two rooms
+            roomRepository
+                .Setup(x => x.GetAllAsync())
+                .ReturnsAsync(new List<Room>
+                {
+                    new Room { Id = 1 },
+                    new Room { Id = 2 }
+                });
+
+            var bookingManager = new BookingManager(
+                bookingRepository.Object,
+                roomRepository.Object);
+
+            var booking = new Booking
+            {
+                StartDate = DateTime.Today.AddDays(2),
+                EndDate = DateTime.Today.AddDays(5),
+                CustomerId = 1
+            };
+
+            // Act
+            bool result = await bookingManager.CreateBooking(booking);
+
+            // Assert
+            Assert.True(result);
+            Assert.True(booking.IsActive);
+            Assert.Equal(1, booking.RoomId);
+
+            // Verify that AddAsync was called exactly once
+            bookingRepository.Verify(
+                x => x.AddAsync(booking),
+                Times.Once);
+        }
+        
+        [Fact]
+        public async Task CreateBooking_NoRoomsAvailable_ReturnsFalse()
+        {
+            // Arrange
+
+            var bookingRepository = new Mock<IRepository<Booking>>();
+            var roomRepository = new Mock<IRepository<Room>>();
+
+            bookingRepository
+                .Setup(x => x.GetAllAsync())
+                .ReturnsAsync(new List<Booking>());
+
+            // Mock repository to return no rooms
+            roomRepository
+                .Setup(x => x.GetAllAsync())
+                .ReturnsAsync(new List<Room>());
+
+            var bookingManager = new BookingManager(
+                bookingRepository.Object,
+                roomRepository.Object);
+
+            var booking = new Booking
+            {
+                StartDate = DateTime.Today.AddDays(2),
+                EndDate = DateTime.Today.AddDays(5)
+            };
+
+            // Act
+            bool result = await bookingManager.CreateBooking(booking);
+
+            // Assert
+            Assert.False(result);
+
+            // Verify that the booking was never added
+            bookingRepository.Verify(
+                x => x.AddAsync(It.IsAny<Booking>()),
+                Times.Never);
+        }
+        
+        [Fact]
+        public async Task FindAvailableRoom_InactiveBookingDoesNotBlockRoom_ReturnsRoom()
+        {
+            var bookingRepository = new Mock<IRepository<Booking>>();
+            var roomRepository = new Mock<IRepository<Room>>();
+
+            DateTime startDate = DateTime.Today.AddDays(2);
+            DateTime endDate = DateTime.Today.AddDays(5);
+
+            // Room 1 has an overlapping booking,
+            // but the booking is inactive.
+            bookingRepository
+                .Setup(x => x.GetAllAsync())
+                .ReturnsAsync(new List<Booking>
+                {
+                    new Booking
+                    {
+                        Id = 10,
+                        RoomId = 1,
+                        StartDate = startDate,
+                        EndDate = endDate,
+                        IsActive = false
+                    }
+                });
+
+            roomRepository
+                .Setup(x => x.GetAllAsync())
+                .ReturnsAsync(new List<Room>
+                {
+                    new Room { Id = 1 }
+                });
+
+            var bookingManager = new BookingManager(
+                bookingRepository.Object,
+                roomRepository.Object);
+            
+            int roomId = await bookingManager.FindAvailableRoom(
+                startDate,
+                endDate);
+            
+            Assert.Equal(1, roomId);
         }
 
     }
