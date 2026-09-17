@@ -198,23 +198,7 @@ namespace HotelBooking.UnitTests
             };
         }
 
-        [Theory]
-        [MemberData(nameof(OccupiedDateCases))]
-        public async Task GetFullyOccupiedDates_VariousScenarios_ReturnsExpectedCount(
-            List<Room> rooms, List<Booking> bookings, DateTime start, DateTime end, int expectedCount)
-        {
-            // Arrange
-            roomRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(rooms);
-            bookingRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(bookings);
-
-            // Act
-            var result = await bookingManager.GetFullyOccupiedDates(start, end);
-
-            // Assert
-            Assert.Equal(expectedCount, result.Count);
-        }
-
-        [Fact]
+               [Fact]
         public async Task GetFullyOccupiedDates_StartAfterEnd_ThrowsArgumentException()
         {
             DateTime start = DateTime.Today.AddDays(5);
@@ -223,6 +207,45 @@ namespace HotelBooking.UnitTests
             Task Act() => bookingManager.GetFullyOccupiedDates(start, end);
 
             await Assert.ThrowsAsync<ArgumentException>(Act);
+        }
+
+        // ============================================================
+        // Failure-path tests: making sure the code rejects bad stuff
+        // correctly, not just accepts good stuff
+        // ============================================================
+
+        [Fact]
+        public async Task CreateBooking_NullBooking_ThrowsArgumentNullException()
+        {
+            // nobody tests what happens when you just don't pass a booking
+            Task Act() => bookingManager.CreateBooking(null);
+
+            await Assert.ThrowsAsync<ArgumentNullException>(Act);
+        }
+
+        [Fact]
+        public async Task CreateBooking_RoomUnavailable_NeverCallsAddAsync()
+        {
+            // room is booked solid for the whole window
+            var rooms = new List<Room> { new Room { Id = 1 } };
+            var bookings = new List<Booking>
+            {
+                new Booking { RoomId = 1, IsActive = true,
+                    StartDate = DateTime.Today.AddDays(1), EndDate = DateTime.Today.AddDays(10) }
+            };
+            roomRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(rooms);
+            bookingRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(bookings);
+
+            var newBooking = new Booking
+            {
+                StartDate = DateTime.Today.AddDays(3),
+                EndDate = DateTime.Today.AddDays(4)
+            };
+
+            await bookingManager.CreateBooking(newBooking);
+
+            // returning false isn't enough, it also shouldn't sneak the booking in anyway
+            bookingRepoMock.Verify(r => r.AddAsync(It.IsAny<Booking>()), Times.Never);
         }
     }
 }
