@@ -197,6 +197,22 @@ namespace HotelBooking.UnitTests
                 0
             };
         }
+        
+        [Theory]
+        [MemberData(nameof(OccupiedDateCases))]
+        public async Task GetFullyOccupiedDates_VariousScenarios_ReturnsExpectedCount(
+            List<Room> rooms, List<Booking> bookings, DateTime start, DateTime end, int expectedCount)
+        {
+            // Arrange
+            roomRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(rooms);
+            bookingRepoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(bookings);
+
+            // Act
+            var result = await bookingManager.GetFullyOccupiedDates(start, end);
+
+            // Assert
+            Assert.Equal(expectedCount, result.Count);
+        }
 
                [Fact]
         public async Task GetFullyOccupiedDates_StartAfterEnd_ThrowsArgumentException()
