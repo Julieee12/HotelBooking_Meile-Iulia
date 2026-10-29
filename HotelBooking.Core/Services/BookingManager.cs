@@ -19,6 +19,10 @@ namespace HotelBooking.Core
 
         public async Task<bool> CreateBooking(Booking booking)
         {
+            
+            if (booking == null)
+                throw new ArgumentNullException(nameof(booking));
+            
             int roomId = await FindAvailableRoom(booking.StartDate, booking.EndDate);
 
             if (roomId >= 0)
