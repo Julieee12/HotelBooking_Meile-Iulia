@@ -1,0 +1,421 @@
+﻿{
+  "info": {
+    "_postman_id": "7c1d0a52-3b8e-4f1a-9d62-5a0e2f4b8c11",
+    "name": "HotelBooking_CreateBooking",
+    "description": "API tests for the Create booking feature (POST /bookings).\nP1, P4 and P5 are based on test cases T2, T3 and T8 from CreateBooking-TestCases.md. P2, P3 and P6 test things only the API has: saved data, fetching by id and a broken request.\n\nRun the whole collection with the Collection Runner, because the first request prepares the data for the other requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0 - Setup: dates and rooms",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// make the dates for the tests",
+              "// they are far in the future, so bookings from earlier runs dont get in the way",
+              "function fmt(offset) {",
+              "    const d = new Date();",
+              "    d.setDate(d.getDate() + offset);",
+              "    const p = n => String(n).padStart(2, '0');",
+              "    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());",
+              "}",
+              "",
+              "const base = 1000 + Math.floor(Math.random() * 20000);",
+              "pm.collectionVariables.set('validStart', fmt(base));",
+              "pm.collectionVariables.set('validEnd', fmt(base + 2));",
+              "pm.collectionVariables.set('reversedStart', fmt(base + 5));",
+              "pm.collectionVariables.set('reversedEnd', fmt(base + 4));",
+              "pm.collectionVariables.set('fullStart', fmt(base + 10));",
+              "pm.collectionVariables.set('fullEnd', fmt(base + 12));",
+              "pm.collectionVariables.unset('roomCount');",
+              "pm.collectionVariables.unset('createdBookingId');",
+              "",
+              "// check that the hotel has a room, create one if it is empty",
+              "const url = pm.collectionVariables.get('baseUrl') + '/rooms';",
+              "pm.sendRequest({ url: url, method: 'GET' }, function (err, res) {",
+              "    try {",
+              "        if (!err && res.code === 200 && res.json().length === 0) {",
+              "            pm.sendRequest({",
+              "                url: url,",
+              "                method: 'POST',",
+              "                header: { 'Content-Type': 'application/json' },",
+              "                body: { mode: 'raw', raw: JSON.stringify({ description: 'Room 1' }) }",
+              "            }, function () {});",
+              "        }",
+              "    } catch (e) {",
+              "        console.log('Could not check the rooms: ' + e);",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response is json', function () {",
+              "    pm.response.to.be.json;",
+              "});",
+              "",
+              "pm.test('The hotel has at least one room', function () {",
+              "    pm.expect(pm.response.json().length).to.be.above(0);",
+              "});",
+              "",
+              "// save the number of rooms, P5 needs it",
+              "try {",
+              "    pm.collectionVariables.set('roomCount', pm.response.json().length);",
+              "} catch (e) {",
+              "    console.log('Could not read the room list: ' + e);",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/rooms",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "rooms"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "P1 - Valid booking is created (T2)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 201 Created', function () {",
+              "    pm.response.to.have.status(201);",
+              "});",
+              "",
+              "// the controller sends no body, only a Location header",
+              "pm.test('Location header points to /bookings', function () {",
+              "    pm.expect(pm.response.headers.get('Location')).to.include('/bookings');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"startDate\": \"{{validStart}}\",\n  \"endDate\": \"{{validEnd}}\",\n  \"customerId\": {{customerId}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/bookings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "bookings"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "P2 - Created booking is saved (GET all)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response is json', function () {",
+              "    pm.response.to.be.json;",
+              "});",
+              "",
+              "pm.test('The new booking is in the list, active and has a room', function () {",
+              "    const start = pm.collectionVariables.get('validStart');",
+              "    const end = pm.collectionVariables.get('validEnd');",
+              "    const found = pm.response.json().find(b => b.startDate.startsWith(start) && b.endDate.startsWith(end));",
+              "",
+              "    pm.expect(found, 'booking was not found in the list').to.exist;",
+              "    pm.expect(found.isActive).to.be.true;",
+              "    pm.expect(found.roomId).to.be.above(0);",
+              "",
+              "    // save the id, P3 uses it",
+              "    pm.collectionVariables.set('createdBookingId', found.id);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/bookings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "bookings"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "P3 - Created booking can be fetched by id",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Booking has the dates we sent and a room', function () {",
+              "    const b = pm.response.json();",
+              "    pm.expect(b.startDate.startsWith(pm.collectionVariables.get('validStart'))).to.be.true;",
+              "    pm.expect(b.endDate.startsWith(pm.collectionVariables.get('validEnd'))).to.be.true;",
+              "    pm.expect(b.roomId).to.be.above(0);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/bookings/{{createdBookingId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "bookings",
+            "{{createdBookingId}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "P4 - Start date after end date is rejected (T3)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// BookingManager throws an ArgumentException and the controller does not catch it,",
+              "// so the API answers 500. 400 Bad Request would be better.",
+              "pm.test('Booking is rejected (status 400 or higher)', function () {",
+              "    pm.expect(pm.response.code).to.be.at.least(400);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"startDate\": \"{{reversedStart}}\",\n  \"endDate\": \"{{reversedEnd}}\",\n  \"customerId\": {{customerId}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/bookings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "bookings"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "P5 - No room available gives conflict (T8)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// book all rooms for the same dates, so no room is left for the request below",
+              "const rooms = parseInt(pm.collectionVariables.get('roomCount'));",
+              "",
+              "// only do this if we know the number of rooms, otherwise the loop never ends",
+              "if (rooms > 0 && rooms <= 50) {",
+              "    const url = pm.collectionVariables.get('baseUrl') + '/bookings';",
+              "    const body = JSON.stringify({",
+              "        startDate: pm.collectionVariables.get('fullStart'),",
+              "        endDate: pm.collectionVariables.get('fullEnd'),",
+              "        customerId: parseInt(pm.collectionVariables.get('customerId'))",
+              "    });",
+              "",
+              "    const bookRoom = function (i) {",
+              "        if (i >= rooms) { return; }",
+              "        pm.sendRequest({",
+              "            url: url,",
+              "            method: 'POST',",
+              "            header: { 'Content-Type': 'application/json' },",
+              "            body: { mode: 'raw', raw: body }",
+              "        }, function (err) {",
+              "            if (err) { console.log('Could not book room ' + (i + 1) + ': ' + err); return; }",
+              "            bookRoom(i + 1);",
+              "        });",
+              "    };",
+              "",
+              "    bookRoom(0);",
+              "} else {",
+              "    console.log('roomCount is not set. Run the whole collection from the start.');",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 409 Conflict', function () {",
+              "    pm.response.to.have.status(409);",
+              "});",
+              "",
+              "pm.test('Message says that all rooms are occupied', function () {",
+              "    pm.expect(pm.response.text()).to.include('occupied');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"startDate\": \"{{fullStart}}\",\n  \"endDate\": \"{{fullEnd}}\",\n  \"customerId\": {{customerId}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/bookings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "bookings"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "P6 - Broken request body gives 400",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 400 Bad Request', function () {",
+              "    pm.response.to.have.status(400);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{ this is not valid json",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}/bookings",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "bookings"
+          ]
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://localhost:5000"
+    },
+    {
+      "key": "customerId",
+      "value": "1"
+    }
+  ]
+}

@@ -18,7 +18,7 @@ namespace HotelBooking.WebApi.Controllers
             bookingManager = manager;
         }
 
-        // GET: bookings
+        // GET: bookingsa
         [HttpGet(Name = "GetBookings")]
         public async Task<IEnumerable<Booking>> Get()
         {
