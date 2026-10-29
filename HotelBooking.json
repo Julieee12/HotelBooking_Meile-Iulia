@@ -106,8 +106,9 @@
               "});",
               "",
               "// the controller sends no body, only a Location header",
+              "// compared lowercase, because the route casing (/bookings vs /Bookings) isn't what this test cares about",
               "pm.test('Location header points to /bookings', function () {",
-              "    pm.expect(pm.response.headers.get('Location')).to.include('/bookings');",
+              "    pm.expect(pm.response.headers.get('Location').toLowerCase()).to.include('/bookings');",
               "});"
             ],
             "type": "text/javascript"
@@ -237,7 +238,7 @@
           "script": {
             "exec": [
               "// BookingManager throws an ArgumentException and the controller does not catch it,",
-              "// so the API answers 500. 400 Bad Request would be better.",
+              "// so the API answers 500. 400 Bad Request would be better, but fixing that is out of scope here.",
               "pm.test('Booking is rejected (status 400 or higher)', function () {",
               "    pm.expect(pm.response.code).to.be.at.least(400);",
               "});"
@@ -411,7 +412,7 @@
   "variable": [
     {
       "key": "baseUrl",
-      "value": "https://localhost:5000"
+      "value": "http://localhost:5000"
     },
     {
       "key": "customerId",
